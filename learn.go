@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
-	"container/list"
 
 	tea "github.com/charmbracelet/bubbletea/v2"
 )
@@ -23,9 +23,13 @@ type NameLine struct {
 }
 
 type model struct {
-	displays list
+	displays []Display
 	selected int
 	message string
+	resolutions []string
+	screen string
+	current string
+	resolution string
 }
 
 func initialModel() model {
@@ -33,12 +37,14 @@ func initialModel() model {
 	stdout, _ := cmd.CombinedOutput()
 	output := string(stdout)
 	lines := strings.Split(output, "\n")
-	displays := list.New()
-
+	
+	var displays []Display
 	var first bool = true
 	var begin, end int = -1, -1
 	var nl NameLine
-	for i:= 0; i < len(lines); i++ {
+	var current string
+
+	for i:= 1; i < len(lines); i++ {
 		if strings.Contains(lines[i], "connected") {
 			
 			if (first) {
@@ -47,18 +53,17 @@ func initialModel() model {
 			} else {
 				end = i
 				display := Display{nl.name, nl.connected, nl.current, lines[begin:end]}
-				displays.PushBack(display)
+				if (display.connected) {
+					displays = append(displays, display)
+				}
+				
+				if (display.current) {
+					current = display.name
+				}
+
 				begin = i+1
 			}
 			nl = extract_metadata(lines[i])
-		}
-	}
-
-	for e := displays.Front(); e != nil; e = e.Next() {
-		display := Display(e.Value.(Display))
-		fmt.Println(display.name)
-		for i:= 0; i < len(display.resolutions); i++ {
-			res := get_res(display.resolutions[i])
 		}
 	}
 
@@ -66,77 +71,100 @@ func initialModel() model {
 		displays: displays,
 		selected: 0,
 		message: lines[0],
+		screen: "",
+		current: current,
+		resolution: "",
 	}
 }
 
-func (m model) Init() tea.Cmd {
-	return nil
+func (m model) Init()  (tea.Model, tea.Cmd) {
+	return m, nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
 
-    // Is it a key press?
     case tea.KeyMsg:
-
-        // Cool, what was the actual key pressed?
         switch msg.String() {
 
-        // These keys should exit the program.
         case "ctrl+c", "q":
             return m, tea.Quit
 
-        // The "up" and "k" keys move the cursor up
         case "up", "k":
-            if m.cursor > 0 {
-                m.cursor--
+            if m.selected > 0 {
+                m.selected--
             }
 
-        // The "down" and "j" keys move the cursor down
         case "down", "j":
-            if m.cursor < m.Len() {
-                m.cursor++
-            }
+            if m.screen == "" && m.selected < len(m.displays)-1 {
+                m.selected++
+            } else if m.selected < len(m.resolutions)-1 {
+				m.selected++
+			}
 
-        // The "enter" key and the spacebar (a literal space) toggle
-        // the selected state for the item that the cursor is pointing at.
         case "enter", " ":
-            // _, ok := m.selected[m.cursor]
-            // if ok {
-            //     delete(m.selected, m.cursor)
-            // } else {
-            //     m.selected[m.cursor] = struct{}{}
-            // }
+			if (m.screen == "") {
+				m.screen = m.displays[m.selected].name
+				m.resolutions = m.displays[m.selected].resolutions
+			} else {
+				m.resolution = get_res(m.resolutions[m.selected])
+				change_resolution(m)
+				return m, tea.Quit
+			}
+			
+			m.selected = 0
         }
     }
 
-    // Return the updated model to the Bubble Tea runtime for processing.
-    // Note that we're not returning a command.
     return m, nil
 }
 
 func (m model) View() string {
     s := "Which screen do you want to use?\n\n"
+	for i:= 0; i < len(m.displays); i++ {
+		display := m.displays[i]
+		cursor := "  "
+		if (m.selected == i) {
+			cursor = "> "
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, display.name)
+	}
+	
+	if(m.screen != "") {
+		s = "Which resolution do you want?\n\n"
+		for i:= 0; i < len(m.resolutions); i++ {
+			resolution := get_res(m.resolutions[i])
+			cursor := "  "
+			if (m.selected == i) {
+				cursor = "> "
+			}
+			s += fmt.Sprintf("%s %s\n", cursor, resolution)
+		}
+	}
 
-    // for i, choice := range m.choices {
-    //     cursor := " " // no cursor
-    //     if m.cursor == i {
-    //         cursor = ">" // cursor!
-    //     }
-
-    //     checked := " " // not selected
-    //     if _, ok := m.selected[i]; ok {
-    //         checked = "x" // selected!
-    //     }
-
-    //     s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-    // }
-
-    // The footer
     s += "\nPress q to quit.\n"
-
-    // Send the UI for rendering
     return s
+}
+
+func main() {
+    p := tea.NewProgram(initialModel())
+    if _, err := p.Run(); err != nil {
+        fmt.Printf("Alas, there's been an error: %v", err)
+        os.Exit(1)
+    }
+}
+
+func change_resolution(m model) {
+	change := exec.Command("xrandr", "--output", m.screen, "--mode", m.resolution, "--fb", m.resolution, "--primary")
+	change.Run()
+
+	if (m.current != m.screen) {
+		turnOff := exec.Command("xrandr", "--output", m.current, "--off")
+		turnOff.Run()
+
+		moveDesktop := exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen)
+		moveDesktop.Run()
+	}
 }
 
 func extract_metadata(line string) NameLine {
