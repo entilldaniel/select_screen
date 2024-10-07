@@ -123,11 +123,15 @@ func (m model) View() string {
     s := "Which screen do you want to use?\n\n"
 	for i:= 0; i < len(m.displays); i++ {
 		display := m.displays[i]
+		current := ""
+		if m.displays[i].current {
+			current = "(current)"
+		}
 		cursor := "  "
 		if (m.selected == i) {
 			cursor = "> "
 		}
-		s += fmt.Sprintf("%s %s\n", cursor, display.name)
+		s += fmt.Sprintf("%s %s %s\n", cursor, display.name, current)
 	}
 	
 	if(m.screen != "") {
