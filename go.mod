@@ -1,4 +1,4 @@
-module learn/learn
+module display/select
 
 go 1.23.2
 
