@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea/v2"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 var style = lipgloss.NewStyle().
@@ -105,8 +105,8 @@ func initialModel() model {
 	}
 }
 
-func (m model) Init() (tea.Model, tea.Cmd) {
-	return m, nil
+func (m model) Init() tea.Cmd {
+	return  nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
