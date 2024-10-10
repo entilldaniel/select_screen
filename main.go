@@ -10,32 +10,32 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var style = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(lipgloss.Color("#7D56F4")).
-	PaddingTop(2).
-	PaddingLeft(4).
-	Width(22)
+var border = lipgloss.NewStyle().
+    BorderStyle(lipgloss.RoundedBorder()).
+    BorderForeground(lipgloss.Color("63")).
+	MarginLeft(2).
+	PaddingLeft(2).
+	PaddingRight(3).
+	PaddingTop(1).
+	PaddingBottom(1)
 
 var heading = lipgloss.NewStyle().
 	Bold(true).
-	PaddingTop(2).
+	PaddingTop(1).
 	PaddingLeft(2)
 
 var footer = lipgloss.NewStyle().
 	Faint(true).
 	PaddingTop(2).
 	PaddingLeft(2).
-	PaddingBottom(2)
+	PaddingBottom(1)
 
 var alternative = lipgloss.NewStyle().
 	Faint(true).
-	Bold(false).
-	PaddingLeft(2)
+	Bold(false)
 
 var active_alternative = lipgloss.NewStyle().
-	Bold(true).
-	PaddingLeft(2)
+	Bold(true)
 
 type Display struct {
 	name        string
@@ -153,6 +153,7 @@ func (m model) View() string {
 		s += heading.Render("Which screen do you want to use?")
 		s += "\n\n"
 
+		alternatives := ""
 		for i := 0; i < len(m.displays); i++ {
 			display := m.displays[i]
 			current := ""
@@ -161,27 +162,36 @@ func (m model) View() string {
 			}
 
 			if m.selected == i {
-				s += fmt.Sprintf(active_alternative.Render("> %s %s"), display.name, current)
+				alternatives += fmt.Sprintf(active_alternative.Render("> %s %s"), display.name, current)
 			} else {
-				s += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
+				alternatives += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
 			}
-			s += "\n"
+			
+			if (i < len(m.displays)-1) {
+				alternatives += "\n"
+			}
 		}
-	}
-
-	if m.screen != "" {
+		
+		s += border.Render(alternatives)
+	} else {
 		s = heading.Render("Which resolution do you want?")
 		s += "\n\n"
 
+		alternatives := ""
 		for i := 0; i < len(m.resolutions); i++ {
 			resolution := get_res(m.resolutions[i])
 			if m.selected == i {
-				s += active_alternative.Render(fmt.Sprintf("> %s", resolution))
+				alternatives += active_alternative.Render(fmt.Sprintf("> %s", resolution))
 			} else {
-				s += alternative.Render(fmt.Sprintf("  %s", resolution))
+				alternatives += alternative.Render(fmt.Sprintf("  %s", resolution))
 			}
-			s += "\n"
+			if (i < len(m.resolutions)-1) {
+				alternatives += "\n"
+			}
+			
 		}
+		
+		s += border.Render(alternatives)
 	}
 
 	s += footer.Render("Press q to quit.\n")
@@ -189,7 +199,7 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
