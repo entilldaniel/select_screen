@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/charmbracelet/lipgloss"
 	"os"
 	"os/exec"
 	"strings"
@@ -10,57 +9,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var border = lipgloss.NewStyle().
-    BorderStyle(lipgloss.RoundedBorder()).
-    BorderForeground(lipgloss.Color("63")).
-	MarginLeft(2).
-	PaddingLeft(2).
-	PaddingRight(3).
-	PaddingTop(1).
-	PaddingBottom(1)
-
-var heading = lipgloss.NewStyle().
-	Bold(true).
-	PaddingTop(1).
-	PaddingLeft(2)
-
-var footer = lipgloss.NewStyle().
-	Faint(true).
-	PaddingTop(2).
-	PaddingLeft(2).
-	PaddingBottom(1)
-
-var alternative = lipgloss.NewStyle().
-	Faint(true).
-	Bold(false)
-
-var active_alternative = lipgloss.NewStyle().
-	Bold(true)
-
-type Display struct {
-	name        string
-	connected   bool
-	current     bool
-	resolutions []string
+func (m Model) Init() tea.Cmd {
+	return createModel
 }
 
-type NameLine struct {
-	name      string
-	connected bool
-	current   bool
-}
-
-type model struct {
-	displays    []Display
-	selected    int
-	message     string
-	resolutions []string
-	screen      string
-	current     string
-	resolution  string
-}
-
-func initialModel() model {
+func createModel() tea.Msg {
 	cmd := exec.Command("xrandr", "-q")
 	stdout, _ := cmd.CombinedOutput()
 	output := string(stdout)
@@ -95,23 +48,28 @@ func initialModel() model {
 		}
 	}
 
-	return model{
+	return Model{
 		displays:   displays,
 		selected:   0,
-		message:    lines[0],
 		screen:     "",
 		current:    current,
 		resolution: "",
 	}
 }
 
-func (m model) Init() tea.Cmd {
-	return  nil
+func extract_metadata(line string) NameLine {
+	parts := strings.Split(line, " ")
+	name := parts[0]
+	connected := parts[1] == "connected"
+	current := parts[2] == "primary"
+
+	return NameLine{name, connected, current}
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
+	case Model:
+		m = msg
 	case tea.KeyMsg:
 		switch msg.String() {
 
@@ -147,7 +105,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) View() string {
+func (m Model) View() string {
 	s := ""
 	if m.screen == "" {
 		s += heading.Render("Which screen do you want to use?")
@@ -166,12 +124,12 @@ func (m model) View() string {
 			} else {
 				alternatives += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
 			}
-			
-			if (i < len(m.displays)-1) {
+
+			if i < len(m.displays)-1 {
 				alternatives += "\n"
 			}
 		}
-		
+
 		s += border.Render(alternatives)
 	} else {
 		s = heading.Render("Which resolution do you want?")
@@ -185,12 +143,12 @@ func (m model) View() string {
 			} else {
 				alternatives += alternative.Render(fmt.Sprintf("  %s", resolution))
 			}
-			if (i < len(m.resolutions)-1) {
+			if i < len(m.resolutions)-1 {
 				alternatives += "\n"
 			}
-			
+
 		}
-		
+
 		s += border.Render(alternatives)
 	}
 
@@ -199,33 +157,20 @@ func (m model) View() string {
 }
 
 func main() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	p := tea.NewProgram(Model{}, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
 }
 
-func change_resolution(m model) {
-	change := exec.Command("xrandr", "--output", m.screen, "--mode", m.resolution, "--fb", m.resolution, "--primary")
-	change.Run()
+func change_resolution(m Model) {
+	exec.Command("xrandr", "--output", m.screen, "--mode", m.resolution, "--fb", m.resolution, "--primary").Run()
 
 	if m.current != m.screen {
-		turnOff := exec.Command("xrandr", "--output", m.current, "--off")
-		turnOff.Run()
-
-		moveDesktop := exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen)
-		moveDesktop.Run()
+		exec.Command("xrandr", "--output", m.current, "--off").Run()
+		exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen).Run()
 	}
-}
-
-func extract_metadata(line string) NameLine {
-	parts := strings.Split(line, " ")
-	name := parts[0]
-	connected := parts[1] == "connected"
-	current := parts[2] == "primary"
-
-	return NameLine{name, connected, current}
 }
 
 func get_res(line string) string {
