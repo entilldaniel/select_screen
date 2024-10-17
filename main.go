@@ -70,6 +70,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case Model:
 		m = msg
+	case Status:
+		return m, tea.Quit
 	case tea.KeyMsg:
 		switch msg.String() {
 
@@ -94,8 +96,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.resolutions = m.displays[m.selected].resolutions
 			} else {
 				m.resolution = get_res(m.resolutions[m.selected])
-				change_resolution(m)
-				return m, tea.Quit
+				return m, change_resolution(m)
 			}
 
 			m.selected = 0
@@ -103,6 +104,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func change_resolution(m Model) tea.Cmd {
+	return func() tea.Msg {
+		exec.Command("xrandr", "--output", m.screen, "--mode", m.resolution, "--fb", m.resolution, "--primary").Run()
+
+		if m.current != m.screen {
+			exec.Command("xrandr", "--output", m.current, "--off").Run()
+			exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen).Run()
+			return Status("Changed resolution and moved desktop")
+		}
+		return Status("Changed resolution")
+	}
+}
+
+func get_res(line string) string {
+	parts := strings.Split(strings.TrimSpace(line), " ")
+	return parts[0]
 }
 
 func (m Model) View() string {
@@ -162,18 +181,4 @@ func main() {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
-}
-
-func change_resolution(m Model) {
-	exec.Command("xrandr", "--output", m.screen, "--mode", m.resolution, "--fb", m.resolution, "--primary").Run()
-
-	if m.current != m.screen {
-		exec.Command("xrandr", "--output", m.current, "--off").Run()
-		exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen).Run()
-	}
-}
-
-func get_res(line string) string {
-	parts := strings.Split(strings.TrimSpace(line), " ")
-	return parts[0]
 }

@@ -21,3 +21,5 @@ type Model struct {
 	current     string
 	resolution  string
 }
+
+type Status string
