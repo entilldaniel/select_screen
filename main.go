@@ -2,15 +2,52 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m Model) Init() tea.Cmd {
 	return createModel
+}
+
+var (
+	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
+	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
+)
+
+func (display Display) FilterValue() string { return "" }
+
+type displayItemDelegate struct{}
+
+func (d displayItemDelegate) Height() int                             { return 1 }
+func (d displayItemDelegate) Spacing() int                            { return 0 }
+func (d displayItemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (d displayItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(Display)
+	if !ok {
+		return
+	}
+
+	str := fmt.Sprintf("%d. %s", index+1, i.name)
+
+	fn := itemStyle.Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
 }
 
 func createModel() tea.Msg {
@@ -19,7 +56,7 @@ func createModel() tea.Msg {
 	output := string(stdout)
 	lines := strings.Split(output, "\n")
 
-	var displays []Display
+	displays := []list.Item{}
 	var first bool = true
 	var begin, end int = -1, -1
 	var nl NameLine
@@ -48,8 +85,12 @@ func createModel() tea.Msg {
 		}
 	}
 
+	l := list.New(displays, displayItemDelegate{}, 20, 14)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowPagination(false)
 	return Model{
-		displays:   displays,
+		displays:   l,
 		selected:   0,
 		screen:     "",
 		current:    current,
@@ -68,6 +109,9 @@ func extract_metadata(line string) NameLine {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.displays.SetWidth(msg.Width)
+		return m, nil
 	case Model:
 		m = msg
 	case Status:
@@ -78,32 +122,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
-			}
-
-		case "down", "j":
-			if m.screen == "" && m.selected < len(m.displays)-1 {
-				m.selected++
-			} else if m.selected < len(m.resolutions)-1 {
-				m.selected++
-			}
-
 		case "enter", " ":
-			if m.screen == "" {
-				m.screen = m.displays[m.selected].name
-				m.resolutions = m.displays[m.selected].resolutions
-			} else {
-				m.resolution = get_res(m.resolutions[m.selected])
-				return m, change_resolution(m)
-			}
+			// if m.screen == "" {
+			// 	m.screen = m.displays[m.selected].name
+			// 	m.resolutions = m.displays[m.selected].resolutions
+			// } else {
+			// 	m.resolution = get_res(m.resolutions[m.selected])
+			// 	return m, change_resolution(m)
+			// }
 
-			m.selected = 0
+			//m.selected = 0
+			return m, tea.Quit
 		}
 	}
-
-	return m, nil
+	var cmd tea.Cmd
+	m.displays, cmd = m.displays.Update(msg)
+	return m, cmd
 }
 
 func change_resolution(m Model) tea.Cmd {
@@ -127,29 +161,30 @@ func get_res(line string) string {
 func (m Model) View() string {
 	s := ""
 	if m.screen == "" {
-		s += heading.Render("Which screen do you want to use?")
-		s += "\n\n"
+		return "\n" + m.displays.View()
+		// s += heading.Render("Which screen do you want to use?")
+		// s += "\n\n"
 
-		alternatives := ""
-		for i := 0; i < len(m.displays); i++ {
-			display := m.displays[i]
-			current := ""
-			if m.displays[i].current {
-				current = "(current)"
-			}
+		// alternatives := ""
+		// for i := 0; i < len(m.displays); i++ {
+		// 	display := m.displays[i]
+		// 	current := ""
+		// 	if m.displays[i].current {
+		// 		current = "(current)"
+		// 	}
 
-			if m.selected == i {
-				alternatives += fmt.Sprintf(active_alternative.Render("> %s %s"), display.name, current)
-			} else {
-				alternatives += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
-			}
+		// 	if m.selected == i {
+		// 		alternatives += fmt.Sprintf(active_alternative.Render("> %s %s"), display.name, current)
+		// 	} else {
+		// 		alternatives += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
+		// 	}
 
-			if i < len(m.displays)-1 {
-				alternatives += "\n"
-			}
-		}
+		// 	if i < len(m.displays)-1 {
+		// 		alternatives += "\n"
+		// 	}
+		//}
 
-		s += border.Render(alternatives)
+		//s += border.Render(alternatives)
 	} else {
 		s = heading.Render("Which resolution do you want?")
 		s += "\n\n"

@@ -1,5 +1,9 @@
 package main
 
+import (
+	"github.com/charmbracelet/bubbles/list"
+)
+
 type Display struct {
 	name        string
 	connected   bool
@@ -14,7 +18,7 @@ type NameLine struct {
 }
 
 type Model struct {
-	displays    []Display
+	displays    list.Model
 	selected    int
 	resolutions []string
 	screen      string
