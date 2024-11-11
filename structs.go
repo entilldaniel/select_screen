@@ -8,7 +8,7 @@ type Display struct {
 	name        string
 	connected   bool
 	current     bool
-	resolutions []string
+	resolutions list.Model
 }
 
 type NameLine struct {
@@ -19,7 +19,8 @@ type NameLine struct {
 
 type Model struct {
 	displays    list.Model
-	selected    int
+	selected    bool
+	display     Display
 	resolutions []string
 	screen      string
 	current     string

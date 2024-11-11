@@ -25,7 +25,7 @@ var (
 	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
 
-func (display Display) FilterValue() string { return "" }
+func (display Display) FilterValue() string { return display.name }
 
 type displayItemDelegate struct{}
 
@@ -39,6 +39,33 @@ func (d displayItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 	}
 
 	str := fmt.Sprintf("%d. %s", index+1, i.name)
+
+	fn := itemStyle.Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
+}
+
+type resolution string
+
+func (r resolution) FilterValue() string { return "" }
+
+type resolutionItemDelegate struct{}
+
+func (r resolutionItemDelegate) Height() int                             { return 1 }
+func (r resolutionItemDelegate) Spacing() int                            { return 0 }
+func (r resolutionItemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (r resolutionItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(resolution)
+	if !ok {
+		return
+	}
+
+	str := fmt.Sprintf("%d. %s", index+1, i)
 
 	fn := itemStyle.Render
 	if index == m.Index() {
@@ -64,13 +91,18 @@ func createModel() tea.Msg {
 
 	for i := 1; i < len(lines); i++ {
 		if strings.Contains(lines[i], "connected") {
-
 			if first {
 				begin = i + 1
 				first = false
 			} else {
 				end = i
-				display := Display{nl.name, nl.connected, nl.current, lines[begin:end]}
+				resolutions := []list.Item{}
+				for _, res := range lines[begin:end] {
+					resolutions = append(resolutions, resolution(get_res(res)))
+				}
+				displayResolutions := list.New(resolutions, resolutionItemDelegate{}, 32, 14)
+				displayResolutions.Title = fmt.Sprintf("Select resoultion for %s", nl.name)
+				display := Display{nl.name, nl.connected, nl.current, displayResolutions}
 				if display.connected {
 					displays = append(displays, display)
 				}
@@ -83,15 +115,18 @@ func createModel() tea.Msg {
 			}
 			nl = extract_metadata(lines[i])
 		}
+
 	}
 
 	l := list.New(displays, displayItemDelegate{}, 20, 14)
-	l.SetShowStatusBar(false)
+	l.SetShowStatusBar(true)
+	l.Title = current
 	l.SetFilteringEnabled(false)
 	l.SetShowPagination(false)
+
 	return Model{
 		displays:   l,
-		selected:   0,
+		selected:   false,
 		screen:     "",
 		current:    current,
 		resolution: "",
@@ -110,7 +145,6 @@ func extract_metadata(line string) NameLine {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.displays.SetWidth(msg.Width)
 		return m, nil
 	case Model:
 		m = msg
@@ -121,22 +155,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+c", "q":
 			return m, tea.Quit
-
+		case "b":
+			m.selected = false
+			return m, nil
 		case "enter", " ":
-			// if m.screen == "" {
-			// 	m.screen = m.displays[m.selected].name
-			// 	m.resolutions = m.displays[m.selected].resolutions
-			// } else {
-			// 	m.resolution = get_res(m.resolutions[m.selected])
-			// 	return m, change_resolution(m)
-			// }
+			if m.selected {
 
-			//m.selected = 0
-			return m, tea.Quit
+			} else {
+				var si = m.displays.Index()
+				var sn = m.displays.SelectedItem().(Display)
+				m.display = sn
+				m.selected = true
+				statusCmd := m.displays.NewStatusMessage(fmt.Sprintf("%d", si))
+				return m, tea.Cmd(statusCmd)
+			}
 		}
 	}
+
 	var cmd tea.Cmd
-	m.displays, cmd = m.displays.Update(msg)
+	if !m.selected {
+		m.displays, cmd = m.displays.Update(msg)
+	} else {
+		m.display.resolutions, cmd = m.display.resolutions.Update(msg)
+	}
 	return m, cmd
 }
 
@@ -159,61 +200,17 @@ func get_res(line string) string {
 }
 
 func (m Model) View() string {
-	s := ""
-	if m.screen == "" {
+	if !m.selected {
 		return "\n" + m.displays.View()
-		// s += heading.Render("Which screen do you want to use?")
-		// s += "\n\n"
-
-		// alternatives := ""
-		// for i := 0; i < len(m.displays); i++ {
-		// 	display := m.displays[i]
-		// 	current := ""
-		// 	if m.displays[i].current {
-		// 		current = "(current)"
-		// 	}
-
-		// 	if m.selected == i {
-		// 		alternatives += fmt.Sprintf(active_alternative.Render("> %s %s"), display.name, current)
-		// 	} else {
-		// 		alternatives += fmt.Sprintf(alternative.Render("  %s %s"), display.name, current)
-		// 	}
-
-		// 	if i < len(m.displays)-1 {
-		// 		alternatives += "\n"
-		// 	}
-		//}
-
-		//s += border.Render(alternatives)
 	} else {
-		s = heading.Render("Which resolution do you want?")
-		s += "\n\n"
-
-		alternatives := ""
-		for i := 0; i < len(m.resolutions); i++ {
-			resolution := get_res(m.resolutions[i])
-			if m.selected == i {
-				alternatives += active_alternative.Render(fmt.Sprintf("> %s", resolution))
-			} else {
-				alternatives += alternative.Render(fmt.Sprintf("  %s", resolution))
-			}
-			if i < len(m.resolutions)-1 {
-				alternatives += "\n"
-			}
-
-		}
-
-		s += border.Render(alternatives)
+		return "\n" + m.display.resolutions.View()
 	}
-
-	s += footer.Render("Press q to quit.\n")
-	return s
 }
 
 func main() {
 	p := tea.NewProgram(Model{}, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("Alas, there's been an error: %v", err)
+		fmt.Printf("There's been an error: %v", err)
 		os.Exit(1)
 	}
 }
