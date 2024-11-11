@@ -18,13 +18,12 @@ type NameLine struct {
 }
 
 type Model struct {
-	displays    list.Model
-	selected    bool
-	display     Display
-	resolutions []string
-	screen      string
-	current     string
-	resolution  string
+	displays   list.Model
+	selected   bool
+	display    Display
+	screen     string
+	current    string
+	resolution string
 }
 
 type Status string
