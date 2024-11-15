@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -84,7 +85,7 @@ func createModel() Model {
 	output := string(stdout)
 	lines := strings.Split(output, "\n")
 
-	displays := []list.Item{}
+	var displays []list.Item
 	var first bool = true
 	var begin, end int = -1, -1
 	var nl NameLine
@@ -101,11 +102,13 @@ func createModel() Model {
 				for _, res := range lines[begin:end] {
 					resolutions = append(resolutions, resolution(get_res(res)))
 				}
+
 				displayResolutions := list.New(resolutions, resolutionItemDelegate{}, 32, 20)
 				displayResolutions.Title = fmt.Sprintf("Resolution for %s", nl.name)
-				displayResolutions.SetShowStatusBar(false)
 				displayResolutions.SetShowHelp(false)
 				displayResolutions.SetShowPagination(false)
+				displayResolutions.SetShowStatusBar(false)
+
 				display := Display{nl.name, nl.connected, nl.current, displayResolutions}
 				if display.connected {
 					displays = append(displays, display)
@@ -123,17 +126,14 @@ func createModel() Model {
 	}
 
 	l := list.New(displays, displayItemDelegate{}, 32, 20)
-	l.SetShowStatusBar(true)
+	l.Title = fmt.Sprintf("Current: %s", current)
 	l.SetShowHelp(false)
 	l.SetShowPagination(false)
-	l.Title = fmt.Sprintf("Current: %s", current)
-	l.SetFilteringEnabled(false)
-	l.SetShowPagination(false)
+	l.SetShowStatusBar(false)
 
 	return Model{
 		displays:   l,
 		selected:   false,
-		screen:     "",
 		current:    current,
 		resolution: "",
 	}
@@ -145,30 +145,35 @@ func extract_metadata(line string) NameLine {
 	connected := parts[1] == "connected"
 	current := parts[2] == "primary"
 
-	return NameLine{name, connected, current}
+	return NameLine{name, "1920x1080", connected, current}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		log.Println("WindowSizeMsg fired.")
 		h, v := docStyle.GetFrameSize()
-		m.displays.SetSize(msg.Width-h, msg.Height-v)
+		var cmds []tea.Cmd
 		for _, disp := range m.displays.Items() {
 			switch d := disp.(type) {
 			case Display:
+				log.Println("Setting size width: ", msg.Width, " and height: ", msg.Height)
 				d.resolutions.SetSize(msg.Width-h, msg.Height-v)
+				var resCmd tea.Cmd
+				d.resolutions, resCmd = d.resolutions.Update(msg)
+				cmds = append(cmds, resCmd)
 			default:
 				m.displays.Title = "Not that type."
 			}
 		}
 
-		var cmd tea.Cmd
-		if m.selected {
-			m.display.resolutions, cmd = m.display.resolutions.Update(msg)
-		} else {
-			m.displays, cmd = m.displays.Update(msg)
-		}
-		return m, cmd
+		var dispCmd tea.Cmd
+		m.displays.SetSize(msg.Width-h, msg.Height-v)
+		m.displays, dispCmd = m.displays.Update(msg)
+		cmds = append(cmds, dispCmd)
+
+		return m, tea.Batch(cmds...)
+
 	case Status:
 		return m, tea.Quit
 	case tea.KeyMsg:
@@ -179,15 +184,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selected = false
 			return m, nil
 		case "enter", " ":
+			var updateCmd tea.Cmd
 			if m.selected {
-				return m, change_resolution(m)
+				m.display.resolutions, updateCmd = m.display.resolutions.Update(msg)
+				return m, tea.Batch(updateCmd, change_resolution(m))
 			} else {
 				var si = m.displays.Index()
 				var sn = m.displays.SelectedItem().(Display)
 				m.display = sn
 				m.selected = true
-				var updateCmd tea.Cmd
 				m.display.resolutions, updateCmd = m.display.resolutions.Update(msg)
+
 				statusCmd := m.displays.NewStatusMessage(fmt.Sprintf("%d", si))
 				return m, tea.Batch(updateCmd, statusCmd)
 			}
@@ -205,14 +212,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func change_resolution(m Model) tea.Cmd {
 	var sd = m.displays.SelectedItem().(Display)
-	resolution := string(sd.resolutions.SelectedItem().(resolution))
+	resolution := string(m.display.resolutions.SelectedItem().(resolution))
 	new := sd.name
+
+	log.Println(fmt.Sprintf("new display: %s, current: %s, res: %s, old res: %s", new, m.current, resolution, m.resolution))
 	return func() tea.Msg {
 		exec.Command("xrandr", "--output", new, "--mode", resolution, "--fb", resolution, "--primary").Run()
 
 		if m.current != new {
 			exec.Command("xrandr", "--output", m.current, "--off").Run()
-			exec.Command("bspc", "desktop", m.current, "--to-monitor", m.screen).Run()
+			exec.Command("bspc", "desktop", m.current, "--to-monitor", new).Run()
 			return Status("Changed resolution and moved desktop")
 		}
 		return Status("Changed resolution")
@@ -233,9 +242,15 @@ func (m Model) View() string {
 }
 
 func main() {
+	f, _ := tea.LogToFile("/tmp/display-select.log", "")
+
 	p := tea.NewProgram(createModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("There's been an error: %v", err)
 		os.Exit(1)
+	}
+
+	if err := f.Close(); err != nil {
+		panic(1)
 	}
 }
