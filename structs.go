@@ -12,16 +12,16 @@ type Display struct {
 }
 
 type NameLine struct {
-	name      string
-	connected bool
-	current   bool
+	name       string
+	resolution string
+	connected  bool
+	current    bool
 }
 
 type Model struct {
 	displays   list.Model
 	selected   bool
 	display    Display
-	screen     string
 	current    string
 	resolution string
 }
