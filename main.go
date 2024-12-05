@@ -41,6 +41,9 @@ func (d displayItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 	}
 
 	str := fmt.Sprintf("%-6d%s", index+1, i.name)
+	if i.current {
+		str = fmt.Sprintf("%s (current)", str)
+	}
 
 	fn := itemStyle.Render
 	if index == m.Index() {
