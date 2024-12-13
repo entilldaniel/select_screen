@@ -227,6 +227,7 @@ func change_resolution(m Model) tea.Cmd {
 			exec.Command("bspc", "desktop", m.current, "--to-monitor", new).Run()
 			return Status("Changed resolution and moved desktop")
 		}
+		exec.Command("bspc", "wm", "-r").Run()
 		return Status("Changed resolution")
 	}
 }
